@@ -242,6 +242,7 @@ def build_history():
     # 지표별 과거 봉 (MA는 전체로 계산)
     h_inv = add_ma(fetch("114800.KS", "30m", "40d"))
     h_nq60 = add_ma(fetch("NQ=F", "60m", "40d"))
+    h_sox = add_ma(fetch("^SOX", "30m", "40d"))
     h_nq5 = fetch("NQ=F", "5m", "40d")
     h_nq20 = pd.DataFrame()
     if not h_nq5.empty:
@@ -257,7 +258,6 @@ def build_history():
             sam_chg[idx.date()] = row["chg"]
 
     def last_per_date(df):
-        """날짜별 마지막 봉 (MA 포함)"""
         if df.empty:
             return {}
         out = {}
@@ -268,24 +268,27 @@ def build_history():
     inv_by = last_per_date(h_inv)
     nq60_by = last_per_date(h_nq60)
     nq20_by = last_per_date(h_nq20)
+    sox_by = last_per_date(h_sox)
 
-    # 모든 날짜 합집합에서 최근 25거래일
+    G, R = "🟢", "🔴"
     dates = sorted(set(inv_by) | set(nq60_by), reverse=True)[:25]
     rows = []
     for d in dates:
-        iv = inv_by.get(d); nq = nq60_by.get(d); n2 = nq20_by.get(d)
+        iv = inv_by.get(d); nq = nq60_by.get(d); n2 = nq20_by.get(d); sx = sox_by.get(d)
         inv_ok = (iv is not None and not pd.isna(iv.get("MA120")) and iv["Close"] < iv["MA120"])
         nq_ok = (nq is not None and not pd.isna(nq.get("MA120")) and nq["Close"] > nq["MA120"])
         n2_ok = (n2 is not None and not pd.isna(n2.get("MA120"))
                  and n2["MA20"] > n2["MA60"] > n2["MA120"])
-        agrade = bool(inv_ok and nq_ok and n2_ok)
+        sox_ok = (sx is not None and not pd.isna(sx.get("MA120")) and sx["Close"] > sx["MA120"])
+        agrade = bool(inv_ok and nq_ok and n2_ok)   # A급은 장중 3종 기준 (SOX는 참고)
         chg = sam_chg.get(d)
         rows.append({
             "날짜": d.strftime("%m-%d"),
-            "판정": "🟢 A급" if agrade else "🔴 관망",
-            "인버스": "아래✓" if inv_ok else "위✗",
-            "나스닥60": "위✓" if nq_ok else "아래✗",
-            "나스닥20": "정배열✓" if n2_ok else "✗",
+            "판정": (G + " A급") if agrade else (R + " 관망"),
+            "SOX": G if sox_ok else R,
+            "인버스": G if inv_ok else R,
+            "나스닥60": G if nq_ok else R,
+            "나스닥20": G if n2_ok else R,
             "삼성 등락": (f"{chg:+.2f}%" if chg is not None else "—"),
         })
     return pd.DataFrame(rows)
@@ -307,6 +310,7 @@ try:
             msg += f" · 그중 삼성 상승 {up_on_a}일 ({up_on_a/a_days*100:.0f}%)"
         st.caption(msg + " — A급 날 실제로 삼성이 올랐는지 눈으로 검증하세요.")
         st.dataframe(hist, use_container_width=True, hide_index=True, height=420)
+        st.caption("🟢=조건 충족 / 🔴=미충족 · 인버스🟢=기준선 아래, 나스닥60🟢=기준선 위, 나스닥20🟢=정배열, SOX🟢=기준선 위(참고)")
         st.caption("※ 각 날짜의 '장 마감 무렵' 상태 기준. 시간대(미국/한국) 차이로 근사치이며, 정밀 복기는 실제 매매기록과 대조하세요.")
 except Exception as e:
     st.warning(f"히스토리 계산 중 문제: {e}")
