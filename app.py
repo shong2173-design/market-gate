@@ -179,6 +179,39 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ===== 오늘 판정을 구글시트에 기록 =====
+import requests as _rq
+def _save_today():
+    url = st.secrets.get("SHEET_WEBHOOK", "")
+    if not url:
+        return False, "SHEET_WEBHOOK 미설정 (Streamlit Secrets 확인)"
+    grade_txt = "🔵 S급" if sgrade else ("🟢 A급" if base3 else "🔴 관망")
+    _today = dt.datetime.now().strftime("%m-%d")
+    payload = {
+        "날짜": _today,
+        "판정": grade_txt,
+        "SOX": "🟢" if sox_good else "🔴",
+        "인버스": "🟢" if inv_good else "🔴",
+        "나닥60": "🟢" if nq_good else "🔴",
+        "나닥20": "🟢" if nq20_aligned else "🔴",
+        "삼성등락": "",   # 그날 종가 확정 후 별도 기입(장중엔 미정)
+    }
+    try:
+        r = _rq.post(url, json=payload, timeout=10)
+        ok = '"ok":true' in r.text.replace(" ", "")
+        return ok, (r.text[:120] if not ok else "")
+    except Exception as e:
+        return False, str(e)
+
+bc1, bc2 = st.columns([1, 2])
+if bc1.button("📌 오늘 판정 기록", use_container_width=True):
+    ok, err = _save_today()
+    if ok:
+        bc2.success(f"{dt.datetime.now():%m-%d} 판정 시트에 저장됨")
+    else:
+        bc2.error(f"저장 실패: {err}")
+
+
 # ===== 상세 =====
 # 장전 참고 (SOX)
 st.markdown("#### 🌙 장전 참고 — 필라델피아 반도체(SOX)")
