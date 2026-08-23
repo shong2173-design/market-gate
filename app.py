@@ -121,8 +121,8 @@ inv_good, inv_txt = status(inv30, want_above=False)   # 인버스는 '아래'가
 nq_good, nq_txt = status(nq60, want_above=True)        # 나스닥은 '위'가 좋음
 nq20_aligned = is_aligned(nq20)
 
-# SOX 장전 판정 (실시간 아님 = 간밤 마감 기준)
-sox_good, sox_txt = status(sox_d, want_above=True)     # SOX 120일선 위면 반도체 우호
+# SOX 장전 판정 (님 차트와 동일하게 30분봉 120이평 기준)
+sox_good, sox_txt = status(sox, want_above=True)      # SOX 30분봉 120이평 위면 반도체 우호
 sox_dir = None
 if not sox_d.empty and len(sox_d) >= 2:
     c = float(sox_d["Close"].iloc[-1]); p = float(sox_d["Close"].iloc[-2])
@@ -140,7 +140,7 @@ if sox_dir is not None:
     dir_txt = f"간밤 {'상승' if sox_dir >= 0 else '하락'} ({sox_dir:+.2f}%)"
 else:
     dir_txt = "방향 데이터 없음"
-s1.metric(f"SOX 120일선 {light(sox_good)}", sox_txt, dir_txt)
+s1.metric(f"SOX 30분 120이평 {light(sox_good)}", sox_txt, dir_txt)
 if sox_good is True and (sox_dir or 0) >= 0:
     s2.info("간밤 SOX 우호적 — 오늘 반도체 대형주 갭업·강세 가능성. 관심 켜기.")
 elif sox_good is False or (sox_dir is not None and sox_dir < 0):
