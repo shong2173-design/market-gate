@@ -15,6 +15,12 @@ import streamlit as st
 
 st.set_page_config(page_title="A전략 시장판단", layout="wide", page_icon="📊")
 
+# 모바일에서 첫 화면에 요약이 바로 보이도록 상단 여백 축소
+st.markdown("""<style>
+  .block-container{padding-top:1.2rem !important;padding-bottom:1rem !important}
+  [data-testid="stMetricValue"]{font-size:1.4rem}
+</style>""", unsafe_allow_html=True)
+
 # ---------------------------------------------------------------------------
 # 데이터 유틸
 # ---------------------------------------------------------------------------
@@ -85,10 +91,10 @@ def is_aligned(df: pd.DataFrame):
 # ---------------------------------------------------------------------------
 # 헤더
 # ---------------------------------------------------------------------------
-st.markdown("### 📊 A전략 시장판단  ·  30분봉 120이평 게이트")
-now = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+st.markdown("#### 📊 A전략 시장판단 · 30분봉 120이평 게이트")
+now = dt.datetime.now().strftime("%m-%d %H:%M")
 c1, c2 = st.columns([3, 1])
-c1.caption("KODEX 인버스 · 나스닥선물 · 필라델피아 반도체(SOX) — 데이터 5분 캐시")
+c1.caption(f"인버스·나스닥선물·SOX · {now} · 5분 캐시")
 if c2.button("🔄 새로고침"):
     st.cache_data.clear()
     st.rerun()
@@ -133,7 +139,43 @@ gate_ok = all(x is True for x in [inv_good, nq_good, nq20_aligned])
 def light(good):
     return "🟢" if good is True else ("🔴" if good is False else "⚪")
 
-# 장전 참고 (SOX) — 오늘 반도체가 우호적인가. 장중 게이트와 별개
+# ===== 최상단 컴팩트 요약: 5개 신호등 한눈에 (폰 첫 화면) =====
+def chip(label, good, sub):
+    c = "#4caf7d" if good is True else ("#f0464b" if good is False else "#8b98a9")
+    dot = "#3ddc84" if good is True else ("#f0464b" if good is False else "#8b98a9")
+    return f"""<div style="flex:1;min-width:0;background:#141a22;border:1px solid #28313d;
+      border-top:3px solid {c};border-radius:10px;padding:9px 6px;text-align:center">
+      <div style="font-size:11px;color:#8b98a9;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{label}</div>
+      <div style="width:16px;height:16px;border-radius:50%;background:{dot};margin:6px auto 4px"></div>
+      <div style="font-size:10px;color:#cdd7e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{sub}</div>
+    </div>"""
+
+verdict_ok = gate_ok
+vcol = "#4caf7d" if verdict_ok else "#f0464b"
+vtxt = "🟢 A급 진입가능" if verdict_ok else "🔴 관망 / 금지"
+
+sox_sub = sox_txt.split("(")[0].strip() if sox_txt else "—"
+inv_sub = inv_txt.split("(")[0].strip() if inv_txt else "—"
+nq_sub = nq_txt.split("(")[0].strip() if nq_txt else "—"
+nq20_sub = "정배열 O" if nq20_aligned else ("정배열 X" if nq20_aligned is False else "—")
+
+st.markdown(f"""
+<div style="background:{vcol}22;border:1px solid {vcol};border-radius:12px;padding:10px 14px;margin-bottom:10px;text-align:center">
+  <span style="font-size:19px;font-weight:800;color:{vcol}">{vtxt}</span>
+</div>
+<div style="display:flex;gap:6px;margin-bottom:6px">
+  {chip("장전 SOX", sox_good, sox_sub)}
+  {chip("①인버스30", inv_good, inv_sub)}
+  {chip("②나스닥60", nq_good, nq_sub)}
+  {chip("③나스닥20", nq20_aligned, nq20_sub)}
+</div>
+<div style="font-size:10.5px;color:#5d6b7d;text-align:center;margin-bottom:14px">
+  장중 게이트 ①②③ 모두 🟢 = A급 · 장전 SOX는 참고
+</div>
+""", unsafe_allow_html=True)
+
+# ===== 상세 =====
+# 장전 참고 (SOX)
 st.markdown("#### 🌙 장전 참고 — 필라델피아 반도체(SOX)")
 s1, s2 = st.columns([1, 3])
 if sox_dir is not None:
