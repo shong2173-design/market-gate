@@ -31,6 +31,9 @@ def fetch(ticker: str, interval: str, period: str) -> pd.DataFrame:
     return df
 
 def add_ma(df: pd.DataFrame, spans=(20, 60, 120)) -> pd.DataFrame:
+    # 데이터가 비었거나 Close 컬럼이 없으면 그대로 반환 (KeyError 방지)
+    if df is None or df.empty or "Close" not in df.columns:
+        return pd.DataFrame()
     for s in spans:
         df[f"MA{s}"] = df["Close"].rolling(s).mean()
     return df
@@ -104,10 +107,12 @@ with st.spinner("데이터 불러오는 중..."):
         nq20 = nq5.resample("20min").agg({"Open": "first", "High": "max",
                                           "Low": "min", "Close": "last"}).dropna()
         nq20 = add_ma(nq20)
-    # SOX: 30분봉 (안 되면 일봉 폴백)
+    # SOX: 30분봉 (안 되면 일봉 폴백) — 차트용
     sox = add_ma(fetch("^SOX", "30m", "60d"))
     if sox.empty:
         sox = add_ma(fetch("^SOX", "1d", "1y"))
+    # SOX 일봉 — 장전 판정용 (120일선 위/아래 + 전일대비 방향)
+    sox_d = add_ma(fetch("^SOX", "1d", "2y"))
 
 # ---------------------------------------------------------------------------
 # 신호등 판정
@@ -116,12 +121,34 @@ inv_good, inv_txt = status(inv30, want_above=False)   # 인버스는 '아래'가
 nq_good, nq_txt = status(nq60, want_above=True)        # 나스닥은 '위'가 좋음
 nq20_aligned = is_aligned(nq20)
 
+# SOX 장전 판정 (실시간 아님 = 간밤 마감 기준)
+sox_good, sox_txt = status(sox_d, want_above=True)     # SOX 120일선 위면 반도체 우호
+sox_dir = None
+if not sox_d.empty and len(sox_d) >= 2:
+    c = float(sox_d["Close"].iloc[-1]); p = float(sox_d["Close"].iloc[-2])
+    sox_dir = (c - p) / p * 100
+
 gate_ok = all(x is True for x in [inv_good, nq_good, nq20_aligned])
 
 def light(good):
     return "🟢" if good is True else ("🔴" if good is False else "⚪")
 
-st.markdown("#### 지수 게이트")
+# 장전 참고 (SOX) — 오늘 반도체가 우호적인가. 장중 게이트와 별개
+st.markdown("#### 🌙 장전 참고 — 필라델피아 반도체(SOX)")
+s1, s2 = st.columns([1, 3])
+if sox_dir is not None:
+    dir_txt = f"간밤 {'상승' if sox_dir >= 0 else '하락'} ({sox_dir:+.2f}%)"
+else:
+    dir_txt = "방향 데이터 없음"
+s1.metric(f"SOX 120일선 {light(sox_good)}", sox_txt, dir_txt)
+if sox_good is True and (sox_dir or 0) >= 0:
+    s2.info("간밤 SOX 우호적 — 오늘 반도체 대형주 갭업·강세 가능성. 관심 켜기.")
+elif sox_good is False or (sox_dir is not None and sox_dir < 0):
+    s2.warning("간밤 SOX 약함 — 반도체 갭다운/약세 주의. 무리한 진입 자제.")
+else:
+    s2.caption("SOX는 미국 마감(한국 새벽) 후 값이 고정됩니다. 장중엔 안 변해요 — 장전 판단용.")
+
+st.markdown("#### ☀️ 장중 게이트 — A급 (진입 여부 결정)")
 g1, g2, g3, g4 = st.columns(4)
 g1.metric("① 인버스 30분", f"{light(inv_good)}", inv_txt)
 g2.metric("② 나스닥선물 60분", f"{light(nq_good)}", nq_txt)
