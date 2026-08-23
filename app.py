@@ -230,3 +230,83 @@ with col_d:
                         use_container_width=True)
 
 st.caption(f"업데이트: {now}  ·  빨강=상승 파랑=하락(한국식)  ·  노랑=20 초록=60 회색=120이평")
+
+# ---------------------------------------------------------------------------
+# 날짜별 A급/관망 히스토리 (한 달 복기)
+# ---------------------------------------------------------------------------
+st.divider()
+st.markdown("#### 🗓️ 날짜별 게이트 히스토리 (한 달 복기)")
+
+@st.cache_data(ttl=1800)
+def build_history():
+    # 지표별 과거 봉 (MA는 전체로 계산)
+    h_inv = add_ma(fetch("114800.KS", "30m", "40d"))
+    h_nq60 = add_ma(fetch("NQ=F", "60m", "40d"))
+    h_nq5 = fetch("NQ=F", "5m", "40d")
+    h_nq20 = pd.DataFrame()
+    if not h_nq5.empty:
+        h_nq20 = h_nq5.resample("20min").agg({"Open": "first", "High": "max",
+                                              "Low": "min", "Close": "last"}).dropna()
+        h_nq20 = add_ma(h_nq20)
+    # 삼성전자 일봉 등락률
+    sam = fetch("005930.KS", "1d", "3mo")
+    sam_chg = {}
+    if not sam.empty:
+        sam["chg"] = sam["Close"].pct_change() * 100
+        for idx, row in sam.iterrows():
+            sam_chg[idx.date()] = row["chg"]
+
+    def last_per_date(df):
+        """날짜별 마지막 봉 (MA 포함)"""
+        if df.empty:
+            return {}
+        out = {}
+        for d, g in df.groupby(df.index.date):
+            out[d] = g.iloc[-1]
+        return out
+
+    inv_by = last_per_date(h_inv)
+    nq60_by = last_per_date(h_nq60)
+    nq20_by = last_per_date(h_nq20)
+
+    # 모든 날짜 합집합에서 최근 25거래일
+    dates = sorted(set(inv_by) | set(nq60_by), reverse=True)[:25]
+    rows = []
+    for d in dates:
+        iv = inv_by.get(d); nq = nq60_by.get(d); n2 = nq20_by.get(d)
+        inv_ok = (iv is not None and not pd.isna(iv.get("MA120")) and iv["Close"] < iv["MA120"])
+        nq_ok = (nq is not None and not pd.isna(nq.get("MA120")) and nq["Close"] > nq["MA120"])
+        n2_ok = (n2 is not None and not pd.isna(n2.get("MA120"))
+                 and n2["MA20"] > n2["MA60"] > n2["MA120"])
+        agrade = bool(inv_ok and nq_ok and n2_ok)
+        chg = sam_chg.get(d)
+        rows.append({
+            "날짜": d.strftime("%m-%d"),
+            "판정": "🟢 A급" if agrade else "🔴 관망",
+            "인버스": "아래✓" if inv_ok else "위✗",
+            "나스닥60": "위✓" if nq_ok else "아래✗",
+            "나스닥20": "정배열✓" if n2_ok else "✗",
+            "삼성 등락": (f"{chg:+.2f}%" if chg is not None else "—"),
+        })
+    return pd.DataFrame(rows)
+
+try:
+    hist = build_history()
+    if hist.empty:
+        st.info("히스토리 데이터를 못 불러왔습니다.")
+    else:
+        a_days = (hist["판정"] == "🟢 A급").sum()
+        # A급 날 중 삼성 상승 비율
+        up_on_a = 0
+        for _, r in hist[hist["판정"] == "🟢 A급"].iterrows():
+            v = r["삼성 등락"]
+            if v != "—" and v.startswith("+"):
+                up_on_a += 1
+        msg = f"최근 {len(hist)}거래일 중 **A급 {a_days}일**"
+        if a_days:
+            msg += f" · 그중 삼성 상승 {up_on_a}일 ({up_on_a/a_days*100:.0f}%)"
+        st.caption(msg + " — A급 날 실제로 삼성이 올랐는지 눈으로 검증하세요.")
+        st.dataframe(hist, use_container_width=True, hide_index=True, height=420)
+        st.caption("※ 각 날짜의 '장 마감 무렵' 상태 기준. 시간대(미국/한국) 차이로 근사치이며, 정밀 복기는 실제 매매기록과 대조하세요.")
+except Exception as e:
+    st.warning(f"히스토리 계산 중 문제: {e}")
