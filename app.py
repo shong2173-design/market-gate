@@ -220,22 +220,23 @@ st.caption(f"업데이트: {now}")
 # 날짜별 A급/관망 히스토리 (한 달 복기)
 # ---------------------------------------------------------------------------
 st.divider()
-st.markdown("#### 🗓️ 날짜별 게이트 히스토리 (한 달 복기)")
+st.markdown("#### 🗓️ 날짜별 게이트 히스토리 (최대 60일 · 날짜 선택)")
 
 @st.cache_data(ttl=1800)
 def build_history():
-    # 지표별 과거 봉 (MA는 전체로 계산)
-    h_inv = add_ma(fetch("114800.KS", "30m", "40d"))
-    h_nq60 = add_ma(fetch("NQ=F", "60m", "40d"))
-    h_sox = add_ma(fetch("^SOX", "30m", "40d"))
-    h_nq5 = fetch("NQ=F", "5m", "40d")
+    # 지표별 과거 봉 (MA는 전체로 계산). 야후 30/60분봉은 최대 60일 제공.
+    h_inv = add_ma(fetch("114800.KS", "30m", "60d"))
+    h_nq60 = add_ma(fetch("NQ=F", "60m", "60d"))
+    h_sox = add_ma(fetch("^SOX", "30m", "60d"))
+    # 나스닥20분봉용 5분봉 — 야후가 60일 다 안 주면(보통 최근 수일) 과거는 자동으로 빈 값
+    h_nq5 = fetch("NQ=F", "5m", "60d")
     h_nq20 = pd.DataFrame()
     if not h_nq5.empty:
         h_nq20 = h_nq5.resample("20min").agg({"Open": "first", "High": "max",
                                               "Low": "min", "Close": "last"}).dropna()
         h_nq20 = add_ma(h_nq20)
     # 삼성전자 일봉 등락률
-    sam = fetch("005930.KS", "1d", "3mo")
+    sam = fetch("005930.KS", "1d", "4mo")
     sam_chg = {}
     if not sam.empty:
         sam["chg"] = sam["Close"].pct_change() * 100
@@ -256,7 +257,7 @@ def build_history():
     sox_by = last_per_date(h_sox)
 
     G, R = "🟢", "🔴"
-    dates = sorted(set(inv_by) | set(nq60_by), reverse=True)[:25]
+    dates = sorted(set(inv_by) | set(nq60_by), reverse=True)   # 전체 (표시 일수는 밖에서 자름)
     rows = []
     for d in dates:
         iv = inv_by.get(d); nq = nq60_by.get(d); n2 = nq20_by.get(d); sx = sox_by.get(d)
@@ -275,6 +276,7 @@ def build_history():
             grade = "🔴 관망"
         chg = sam_chg.get(d)
         rows.append({
+            "_date": d,   # 실제 날짜 객체 (필터용, 표시 안 함)
             "날짜": d.strftime("%m-%d"),
             "판정": grade,
             "SOX": G if sox_ok else R,
@@ -290,21 +292,60 @@ try:
     if hist.empty:
         st.info("히스토리 데이터를 못 불러왔습니다.")
     else:
-        s_days = (hist["판정"] == "🔵 S급").sum()
-        a_days = (hist["판정"] == "🟢 A급").sum()
-        # 진입급(A+S) 날 중 삼성 상승 비율
+        # ----- 날짜 선택기: 데이터 범위 안에서 시작~끝 고르기 -----
+        all_dates = sorted(hist["_date"].tolist())
+        dmin, dmax = all_dates[0], all_dates[-1]
+        import datetime as _dt
+        default_start = max(dmin, dmax - _dt.timedelta(days=13))  # 기본 최근 2주
+        c1, c2 = st.columns(2)
+        start_d = c1.date_input("시작 날짜", value=default_start,
+                                min_value=dmin, max_value=dmax, key="hist_start")
+        end_d = c2.date_input("끝 날짜", value=dmax,
+                              min_value=dmin, max_value=dmax, key="hist_end")
+        if start_d > end_d:
+            start_d, end_d = end_d, start_d  # 거꾸로 고르면 자동 교정
+
+        # 선택 구간만 필터 (최신이 위로)
+        view = hist[(hist["_date"] >= start_d) & (hist["_date"] <= end_d)]
+        view = view.sort_values("_date", ascending=False)
+
+        s_days = (view["판정"] == "🔵 S급").sum()
+        a_days = (view["판정"] == "🟢 A급").sum()
         up_on = 0; entry_days = 0
-        for _, r in hist[hist["판정"].isin(["🔵 S급", "🟢 A급"])].iterrows():
+        for _, r in view[view["판정"].isin(["🔵 S급", "🟢 A급"])].iterrows():
             entry_days += 1
             v = r["삼성 등락"]
             if v != "—" and v.startswith("+"):
                 up_on += 1
-        msg = f"최근 {len(hist)}거래일 중 **S급 {s_days}일 · A급 {a_days}일**"
+        msg = f"{start_d:%m/%d}~{end_d:%m/%d} · {len(view)}거래일 중 **S급 {s_days} · A급 {a_days}**"
         if entry_days:
-            msg += f" · 진입급 날 삼성 상승 {up_on}/{entry_days}일 ({up_on/entry_days*100:.0f}%)"
-        st.caption(msg + " — 진입급 날 실제로 삼성이 올랐는지 눈으로 검증하세요.")
-        st.dataframe(hist, use_container_width=True, hide_index=True, height=420)
-        st.caption("🔵 S급=4개 전부 🟢 · 🟢 A급=SOX+인버스+나스닥60 🟢(나스닥20 제외) · 🔴 관망 / 인버스🟢=기준선 아래, 나스닥·SOX🟢=기준선 위, 나스닥20🟢=정배열")
-        st.caption("※ 각 날짜의 '장 마감 무렵' 상태 기준. 시간대(미국/한국) 차이로 근사치이며, 정밀 복기는 실제 매매기록과 대조하세요.")
+            msg += f" · 진입급 날 삼성 상승 {up_on}/{entry_days} ({up_on/entry_days*100:.0f}%)"
+        st.caption(msg)
+
+        # 스크롤 없이 다 보이는 컴팩트 HTML 표
+        head = "<tr><th>날짜</th><th>판정</th><th>SOX</th><th>인버스</th><th>나닥60</th><th>나닥20</th><th>삼성</th></tr>"
+        body = ""
+        for _, r in view.iterrows():
+            chg = r["삼성 등락"]
+            chg_color = "#f0464b" if chg.startswith("+") else ("#4b8ef0" if chg.startswith("-") else "#5d6b7d")
+            pj = r["판정"]
+            pj_bg = "#4b8ef022" if "S급" in pj else ("#4caf7d22" if "A급" in pj else "transparent")
+            body += (f"<tr style='background:{pj_bg}'>"
+                     f"<td class='dt'>{r['날짜']}</td>"
+                     f"<td class='pj'>{pj}</td>"
+                     f"<td>{r['SOX']}</td><td>{r['인버스']}</td>"
+                     f"<td>{r['나스닥60']}</td><td>{r['나스닥20']}</td>"
+                     f"<td style='color:{chg_color};font-family:monospace'>{chg}</td></tr>")
+        st.markdown(f"""
+<style>
+  .histtbl{{width:100%;border-collapse:collapse;font-size:12px}}
+  .histtbl th{{color:#8b98a9;font-weight:700;padding:3px 4px;border-bottom:1px solid #28313d;text-align:center;font-size:10.5px}}
+  .histtbl td{{padding:2px 4px;text-align:center;border-bottom:1px solid #1c2330;line-height:1.35}}
+  .histtbl td.dt{{font-family:monospace;color:#cdd7e2}}
+  .histtbl td.pj{{font-size:10.5px;font-weight:700;white-space:nowrap}}
+</style>
+<table class="histtbl">{head}{body}</table>
+""", unsafe_allow_html=True)
+        st.caption("🔵S급=4개 전부 · 🟢A급=SOX+인버스+나닥60 · 🔴관망 / 인버스🟢=기준선 아래·나닥·SOX🟢=위·나닥20🟢=정배열 · ※장 마감 무렵 근사치")
 except Exception as e:
     st.warning(f"히스토리 계산 중 문제: {e}")
