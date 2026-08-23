@@ -134,7 +134,9 @@ if not sox_d.empty and len(sox_d) >= 2:
     c = float(sox_d["Close"].iloc[-1]); p = float(sox_d["Close"].iloc[-2])
     sox_dir = (c - p) / p * 100
 
-gate_ok = all(x is True for x in [inv_good, nq_good, nq20_aligned])
+base3 = bool(sox_good and inv_good and nq_good)   # A급: SOX+인버스+나스닥60
+sgrade = bool(base3 and nq20_aligned)             # S급: +나스닥20
+gate_ok = base3   # 진입 가능 = A급 이상
 
 def light(good):
     return "🟢" if good is True else ("🔴" if good is False else "⚪")
@@ -150,9 +152,12 @@ def chip(label, good, sub):
       <div style="font-size:10px;color:#cdd7e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{sub}</div>
     </div>"""
 
-verdict_ok = gate_ok
-vcol = "#4caf7d" if verdict_ok else "#f0464b"
-vtxt = "🟢 A급 진입가능" if verdict_ok else "🔴 관망 / 금지"
+if sgrade:
+    vcol = "#4b8ef0"; vtxt = "🔵 S급 — 최상급 진입"
+elif base3:
+    vcol = "#4caf7d"; vtxt = "🟢 A급 — 진입 가능"
+else:
+    vcol = "#f0464b"; vtxt = "🔴 관망 / 금지"
 
 sox_sub = sox_txt.split("(")[0].strip() if sox_txt else "—"
 inv_sub = inv_txt.split("(")[0].strip() if inv_txt else "—"
@@ -164,13 +169,13 @@ st.markdown(f"""
   <span style="font-size:19px;font-weight:800;color:{vcol}">{vtxt}</span>
 </div>
 <div style="display:flex;gap:6px;margin-bottom:6px">
-  {chip("장전 SOX", sox_good, sox_sub)}
-  {chip("①인버스30", inv_good, inv_sub)}
-  {chip("②나스닥60", nq_good, nq_sub)}
-  {chip("③나스닥20", nq20_aligned, nq20_sub)}
+  {chip("SOX", sox_good, sox_sub)}
+  {chip("인버스30", inv_good, inv_sub)}
+  {chip("나스닥60", nq_good, nq_sub)}
+  {chip("나스닥20", nq20_aligned, nq20_sub)}
 </div>
 <div style="font-size:10.5px;color:#5d6b7d;text-align:center;margin-bottom:14px">
-  장중 게이트 ①②③ 모두 🟢 = A급 · 장전 SOX는 참고
+  A급 = SOX·인버스·나스닥60 모두 🟢 (진입 가능) · S급 = 나스닥20까지 🟢 (최상급)
 </div>
 """, unsafe_allow_html=True)
 
@@ -197,39 +202,19 @@ g2.metric("② 나스닥선물 60분", f"{light(nq_good)}", nq_txt)
 g3.metric("③ 나스닥 20분 정배열",
           light(nq20_aligned),
           "정배열 O" if nq20_aligned else ("정배열 X" if nq20_aligned is False else "데이터 없음"))
-verdict = "🟢 A급 — 진입 가능" if gate_ok else "🔴 관망 / 금지"
+verdict = ("🔵 S급 — 최상급" if sgrade else ("🟢 A급 — 진입 가능" if base3 else "🔴 관망 / 금지"))
 g4.metric("종합 판정", verdict)
 
-if gate_ok:
-    st.success("세 조건 모두 충족 — A급. (종목 조건: 기준선 위 + 10분 정배열 + 수급 별도 확인)")
+if sgrade:
+    st.success("S급 — SOX·인버스·나스닥60·나스닥20 모두 충족. (종목 조건: 기준선 위 + 10분 정배열 + 수급 별도 확인)")
+elif base3:
+    st.success("A급 — SOX·인버스·나스닥60 충족(나스닥20 미충족). 진입 가능하나 최상급은 아님.")
 else:
-    st.warning("하나 이상 불충족 — 관망. 인버스가 기준선 위면 매매금지.")
+    st.warning("관망 — SOX·인버스·나스닥60 중 하나 이상 불충족. 인버스가 기준선 위면 매매금지.")
 
 st.divider()
 
-# ---------------------------------------------------------------------------
-# 차트 (당일)
-# ---------------------------------------------------------------------------
-col_a, col_b = st.columns(2)
-with col_a:
-    if not inv30.empty:
-        st.plotly_chart(candle_chart(inv30, "KODEX 인버스 · 30분봉"), use_container_width=True)
-    else:
-        st.info("인버스 분봉 데이터를 못 불러왔습니다. (야후 국내 ETF 분봉 제한 — MTS로 보조 확인)")
-with col_b:
-    if not nq60.empty:
-        st.plotly_chart(candle_chart(nq60, "나스닥선물(NQ) · 60분봉"), use_container_width=True)
-
-col_c, col_d = st.columns(2)
-with col_c:
-    if not sox.empty:
-        st.plotly_chart(candle_chart(sox, "필라델피아 반도체(SOX)"), use_container_width=True)
-with col_d:
-    if not nq20.empty:
-        st.plotly_chart(candle_chart(nq20, "나스닥선물(NQ) · 20분봉 (정배열 확인)"),
-                        use_container_width=True)
-
-st.caption(f"업데이트: {now}  ·  빨강=상승 파랑=하락(한국식)  ·  노랑=20 초록=60 회색=120이평")
+st.caption(f"업데이트: {now}")
 
 # ---------------------------------------------------------------------------
 # 날짜별 A급/관망 히스토리 (한 달 복기)
@@ -280,11 +265,18 @@ def build_history():
         n2_ok = (n2 is not None and not pd.isna(n2.get("MA120"))
                  and n2["MA20"] > n2["MA60"] > n2["MA120"])
         sox_ok = (sx is not None and not pd.isna(sx.get("MA120")) and sx["Close"] > sx["MA120"])
-        agrade = bool(inv_ok and nq_ok and n2_ok)   # A급은 장중 3종 기준 (SOX는 참고)
+        base3 = bool(sox_ok and inv_ok and nq_ok)      # A급: SOX+인버스+나스닥60
+        sgrade = bool(base3 and n2_ok)                  # S급: +나스닥20 정배열
+        if sgrade:
+            grade = "🔵 S급"
+        elif base3:
+            grade = "🟢 A급"
+        else:
+            grade = "🔴 관망"
         chg = sam_chg.get(d)
         rows.append({
             "날짜": d.strftime("%m-%d"),
-            "판정": (G + " A급") if agrade else (R + " 관망"),
+            "판정": grade,
             "SOX": G if sox_ok else R,
             "인버스": G if inv_ok else R,
             "나스닥60": G if nq_ok else R,
@@ -298,19 +290,21 @@ try:
     if hist.empty:
         st.info("히스토리 데이터를 못 불러왔습니다.")
     else:
+        s_days = (hist["판정"] == "🔵 S급").sum()
         a_days = (hist["판정"] == "🟢 A급").sum()
-        # A급 날 중 삼성 상승 비율
-        up_on_a = 0
-        for _, r in hist[hist["판정"] == "🟢 A급"].iterrows():
+        # 진입급(A+S) 날 중 삼성 상승 비율
+        up_on = 0; entry_days = 0
+        for _, r in hist[hist["판정"].isin(["🔵 S급", "🟢 A급"])].iterrows():
+            entry_days += 1
             v = r["삼성 등락"]
             if v != "—" and v.startswith("+"):
-                up_on_a += 1
-        msg = f"최근 {len(hist)}거래일 중 **A급 {a_days}일**"
-        if a_days:
-            msg += f" · 그중 삼성 상승 {up_on_a}일 ({up_on_a/a_days*100:.0f}%)"
-        st.caption(msg + " — A급 날 실제로 삼성이 올랐는지 눈으로 검증하세요.")
+                up_on += 1
+        msg = f"최근 {len(hist)}거래일 중 **S급 {s_days}일 · A급 {a_days}일**"
+        if entry_days:
+            msg += f" · 진입급 날 삼성 상승 {up_on}/{entry_days}일 ({up_on/entry_days*100:.0f}%)"
+        st.caption(msg + " — 진입급 날 실제로 삼성이 올랐는지 눈으로 검증하세요.")
         st.dataframe(hist, use_container_width=True, hide_index=True, height=420)
-        st.caption("🟢=조건 충족 / 🔴=미충족 · 인버스🟢=기준선 아래, 나스닥60🟢=기준선 위, 나스닥20🟢=정배열, SOX🟢=기준선 위(참고)")
+        st.caption("🔵 S급=4개 전부 🟢 · 🟢 A급=SOX+인버스+나스닥60 🟢(나스닥20 제외) · 🔴 관망 / 인버스🟢=기준선 아래, 나스닥·SOX🟢=기준선 위, 나스닥20🟢=정배열")
         st.caption("※ 각 날짜의 '장 마감 무렵' 상태 기준. 시간대(미국/한국) 차이로 근사치이며, 정밀 복기는 실제 매매기록과 대조하세요.")
 except Exception as e:
     st.warning(f"히스토리 계산 중 문제: {e}")
