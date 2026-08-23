@@ -341,7 +341,7 @@ try:
   .histtbl{{width:100%;border-collapse:collapse;font-size:12px}}
   .histtbl th{{color:#8b98a9;font-weight:700;padding:3px 4px;border-bottom:1px solid #28313d;text-align:center;font-size:10.5px}}
   .histtbl td{{padding:2px 4px;text-align:center;border-bottom:1px solid #1c2330;line-height:1.35}}
-  .histtbl td.dt{{font-family:monospace;color:#cdd7e2}}
+  .histtbl td.dt{{font-family:monospace;color:#ffffff;font-weight:700;font-size:12.5px}}
   .histtbl td.pj{{font-size:10.5px;font-weight:700;white-space:nowrap}}
 </style>
 <table class="histtbl">{head}{body}</table>
