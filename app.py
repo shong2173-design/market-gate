@@ -296,7 +296,7 @@ try:
         all_dates = sorted(hist["_date"].tolist())
         dmin, dmax = all_dates[0], all_dates[-1]
         import datetime as _dt
-        default_start = max(dmin, dmax - _dt.timedelta(days=13))  # 기본 최근 2주
+        default_start = max(dmin, dmax - _dt.timedelta(days=31))  # 기본 최근 1개월
         c1, c2 = st.columns(2)
         start_d = c1.date_input("시작 날짜", value=default_start,
                                 min_value=dmin, max_value=dmax, key="hist_start")
