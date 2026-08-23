@@ -1,0 +1,27 @@
+name: 게이트 판정 자동 기록
+
+on:
+  schedule:
+    # UTC 기준. 한국 15:40(장 마감 직후) = UTC 06:40
+    - cron: "40 6 * * 1-5"   # 월~금
+  workflow_dispatch:          # 수동 실행 버튼도 만들어줌
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 라이브러리 설치
+        run: pip install yfinance pandas requests
+
+      - name: 판정 기록 실행
+        env:
+          SHEET_WEBHOOK: ${{ secrets.SHEET_WEBHOOK }}
+        run: python daily_record.py
