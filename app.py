@@ -316,7 +316,7 @@ def build_history():
             "인버스": G if inv_ok else R,
             "나스닥60": G if nq_ok else R,
             "나스닥20": G if n2_ok else R,
-            "삼성 등락": (f"{chg:+.2f}%" if chg is not None else "—"),
+            "삼성 등락": (f"{chg:+.2f}%" if chg is not None and not pd.isna(chg) else "—"),
         })
     return pd.DataFrame(rows)
 
