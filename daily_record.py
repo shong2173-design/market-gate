@@ -69,7 +69,8 @@ def main():
     sam_chg = ""
     if not sam.empty and len(sam) >= 2:
         c = float(sam["Close"].iloc[-1]); p = float(sam["Close"].iloc[-2])
-        sam_chg = round((c - p) / p, 4)   # 소수로 저장 (0.0387 = +3.87%). 시트 서식=퍼센트
+        if p and not pd.isna(c) and not pd.isna(p):
+            sam_chg = round((c - p) / p, 4)   # 소수 저장 (0.0387=+3.87%). 시트 서식=퍼센트
 
     # 판정
     inv_ok = above_ma120(inv30, want_above=False)   # 인버스는 아래가 좋음
