@@ -92,9 +92,11 @@ def is_aligned(df: pd.DataFrame):
 # 헤더
 # ---------------------------------------------------------------------------
 st.markdown("#### 📊 A전략 시장판단 · 30분봉 120이평 게이트")
-now = dt.datetime.now().strftime("%m-%d %H:%M")
+# 서버는 UTC로 도므로 한국시간(KST = UTC+9)으로 변환해 표시
+_kst = dt.datetime.utcnow() + dt.timedelta(hours=9)
+now = _kst.strftime("%m-%d %H:%M")
 c1, c2 = st.columns([3, 1])
-c1.caption(f"인버스·나스닥선물·SOX · {now} · 5분 캐시")
+c1.caption(f"인버스·나스닥선물·SOX · {now} (KST) · 5분 캐시")
 if c2.button("🔄 새로고침"):
     st.cache_data.clear()
     st.rerun()
@@ -186,7 +188,7 @@ def _save_today():
     if not url:
         return False, "SHEET_WEBHOOK 미설정 (Streamlit Secrets 확인)"
     grade_txt = "🔵 S급" if sgrade else ("🟢 A급" if base3 else "🔴 관망")
-    _today = dt.datetime.now().strftime("%m-%d")
+    _today = (dt.datetime.utcnow() + dt.timedelta(hours=9)).strftime("%m-%d")
     payload = {
         "날짜": _today,
         "판정": grade_txt,
@@ -207,7 +209,7 @@ bc1, bc2 = st.columns([1, 2])
 if bc1.button("📌 오늘 판정 기록", use_container_width=True):
     ok, err = _save_today()
     if ok:
-        bc2.success(f"{dt.datetime.now():%m-%d} 판정 시트에 저장됨")
+        bc2.success(f"{(dt.datetime.utcnow() + dt.timedelta(hours=9)):%m-%d} 판정 시트에 저장됨")
     else:
         bc2.error(f"저장 실패: {err}")
 
